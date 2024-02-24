@@ -1,16 +1,37 @@
 import { Hono } from 'hono'
+import { PrismaClient } from '@prisma/client/edge'
+import { withAccelerate } from '@prisma/extension-accelerate'
+import { decode, sign, verify } from 'hono/jwt';
 
-const app = new Hono()
+const app = new Hono<{
+  Bindings: {
+    DATABASE_URL: string,
+    JWT_SECRET: string
+  }
+}>();
 
-// const postgresurl = "postgresql://devpsk03:qC2oliQkg3Gx@ep-gentle-hall-51602783.us-east-2.aws.neon.tech/firstDB?sslmode=require";
-// const DATABASE_URL="prisma://accelerate.prisma-data.net/?api_key=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcGlfa2V5IjoiMjdlNDY5NmEtY2Q1OS00MDBhLTkyYWYtM2QwYTNhYjFiMGRiIiwidGVuYW50X2lkIjoiOWRlYjYzNDQwMjVlNWQ1YjJlNzFhYWUwMWY1N2ZhZWExM2JjZDM5M2RhODRjNWFkNGJkNGU4NWYwMDliNmJmZCIsImludGVybmFsX3NlY3JldCI6IjIwMjJiMDAxLTRmZWQtNGEwYS04ZjQ1LTk2YWM2YzRmYmQyMiJ9.PkGoAGJEBdJa9PsmPBodlpxRL19S2zWfaQEw1CZaMjM";
+app.post('/api/v1/signup', async (c) => {
+  const prisma = new PrismaClient({
+    datasourceUrl: c.env?.DATABASE_URL,
+  }).$extends(withAccelerate());
 
-app.get('/', (c) => {
-  return c.text('Hello Hono!')
-})
+  const body = await c.req.json();
 
-app.post('api/v1/signup', (c) => {
-  return c.text('Hello Hono!')
+  try {
+    const user = await prisma.user.create({
+      data: {
+        email: body.email,
+        password: body.password
+      }
+    });
+
+    const jwt = await sign({ id: user.id }, c.env.JWT_SECRET);
+    return c.json({ jwt });
+
+  } catch (e) {
+    c.status(403);
+    return c.json({ error: "error while signing up" });
+  }
 })
 
 app.post('api/v1/signin', (c) => {
